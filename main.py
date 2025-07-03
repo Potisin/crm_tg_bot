@@ -28,14 +28,16 @@ def webhook():
             return "ID сделки не найден", 400
 
         # Получаем данные сделки с контактом
-        lead_response = requests.get(
-            f"{AMO_DOMAIN}/api/v4/leads/{lead_id}?with=contacts",
-            headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}
-        )
         lead_data = lead_response.json()
         print("📄 Ответ от /leads:", lead_data)
-
-        contact_id = lead_data.get("contacts", [{}])[0].get("id")
+        
+        contact_id = (
+            lead_data.get("_embedded", {})
+            .get("contacts", [{}])[0]
+            .get("id")
+        )
+        print(f"👤 ID контакта: {contact_id}")
+        
         if not contact_id:
             return "Контакт не найден", 400
 
