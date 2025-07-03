@@ -1,5 +1,6 @@
 from flask import Flask, request
 import requests
+import json
 import os
 
 app = Flask(__name__)
@@ -13,11 +14,13 @@ AMO_DOMAIN = "https://shcherbakovxsizemoscow.amocrm.ru"
 # Получение данных сделки и отправка в Telegram
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.json
     try:
-        lead_id = data.get("leads", {}).get("add", [{}])[0].get("id")
+        form = request.form.to_dict(flat=False)
+        leads = json.loads(form.get("leads", [None])[0])
+
+        lead_id = leads.get("add", [{}])[0].get("id")
         if not lead_id:
-            return "Нет ID сделки", 400
+            return "ID сделки не найден", 400
 
         # Получаем данные сделки с контактом
         lead_response = requests.get(
