@@ -17,22 +17,17 @@ def webhook():
     try:
         print("🔔 Получен POST-запрос от amoCRM")
 
-        # amoCRM шлёт данные как form-urlencoded
         form = request.form.to_dict(flat=False)
         print("📥 Данные формы:", form)
 
-        leads_raw = form.get("leads", [None])[0]
-        if not leads_raw:
-            return "Нет поля 'leads'", 400
-
-        leads = json.loads(leads_raw)
-        lead_id = leads.get("add", [{}])[0].get("id")
+        # Получаем ID сделки напрямую
+        lead_id = form.get("leads[add][0][id]", [None])[0]
         print(f"➡️ ID сделки: {lead_id}")
 
         if not lead_id:
             return "ID сделки не найден", 400
 
-        # Получаем данные сделки с контактами
+        # Получаем данные сделки с контактом
         lead_response = requests.get(
             f"{AMO_DOMAIN}/api/v4/leads/{lead_id}?with=contacts",
             headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}
@@ -44,7 +39,7 @@ def webhook():
         if not contact_id:
             return "Контакт не найден", 400
 
-        # Получаем данные контакта
+        # Получаем контакт
         contact_response = requests.get(
             f"{AMO_DOMAIN}/api/v4/contacts/{contact_id}?with=custom_fields",
             headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}
@@ -60,7 +55,6 @@ def webhook():
                 phone = field["values"][0].get("value")
                 break
 
-        # Отправляем сообщение в Telegram
         message = f"🔔 Новый лид!\n👤 Имя: {name}\n📞 Телефон: {phone}"
         print("📤 Отправка в Telegram:", message)
 
