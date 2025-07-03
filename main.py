@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import json
 import os
+import traceback
 
 app = Flask(__name__)
 
@@ -11,50 +12,70 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 AMO_DOMAIN = "https://shcherbakovxsizemoscow.amocrm.ru"
 
-# Получение данных сделки и отправка в Telegram
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        form = request.form.to_dict(flat=False)
-        leads = json.loads(form.get("leads", [None])[0])
+        print("🔔 Получен POST-запрос от amoCRM")
 
+        # amoCRM шлёт данные как form-urlencoded
+        form = request.form.to_dict(flat=False)
+        print("📥 Данные формы:", form)
+
+        leads_raw = form.get("leads", [None])[0]
+        if not leads_raw:
+            return "Нет поля 'leads'", 400
+
+        leads = json.loads(leads_raw)
         lead_id = leads.get("add", [{}])[0].get("id")
+        print(f"➡️ ID сделки: {lead_id}")
+
         if not lead_id:
             return "ID сделки не найден", 400
 
-        # Получаем данные сделки с контактом
+        # Получаем данные сделки с контактами
         lead_response = requests.get(
             f"{AMO_DOMAIN}/api/v4/leads/{lead_id}?with=contacts",
             headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}
-        ).json()
+        )
+        lead_data = lead_response.json()
+        print("📄 Ответ от /leads:", lead_data)
 
-        contact_id = lead_response.get("contacts", [{}])[0].get("id")
+        contact_id = lead_data.get("contacts", [{}])[0].get("id")
+        if not contact_id:
+            return "Контакт не найден", 400
 
-        # Получаем контакт (имя и телефон)
+        # Получаем данные контакта
         contact_response = requests.get(
             f"{AMO_DOMAIN}/api/v4/contacts/{contact_id}?with=custom_fields",
             headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}
-        ).json()
+        )
+        contact_data = contact_response.json()
+        print("👤 Ответ от /contacts:", contact_data)
 
-        name = contact_response.get("name", "Без имени")
+        name = contact_data.get("name", "Без имени")
         phone = "Не указан"
 
-        for field in contact_response.get("custom_fields_values", []):
+        for field in contact_data.get("custom_fields_values", []):
             if field.get("field_name", "").lower() == "телефон":
                 phone = field["values"][0].get("value")
+                break
 
-        # Отправка в Telegram
+        # Отправляем сообщение в Telegram
         message = f"🔔 Новый лид!\n👤 Имя: {name}\n📞 Телефон: {phone}"
-        requests.post(
+        print("📤 Отправка в Telegram:", message)
+
+        tg_response = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={"chat_id": CHAT_ID, "text": message}
         )
+        print("✅ Ответ от Telegram:", tg_response.text)
 
         return "OK", 200
 
     except Exception as e:
+        print("❌ Ошибка в webhook:")
+        traceback.print_exc()
         return f"Ошибка: {str(e)}", 500
-
 
 @app.route("/", methods=["GET"])
 def home():
