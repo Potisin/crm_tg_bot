@@ -3,63 +3,48 @@ import requests
 import json
 import os
 import traceback
-import time
 
 app = Flask(__name__)
 
 # === Постоянные настройки ===
 AMO_DOMAIN = "https://shcherbakovxsizemoscow.amocrm.ru"
-TOKEN_FILE = "amo_tokens.json"
 
-# === Настройки Telegram ===
+# === Telegram настройки ===
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# === OAuth2 данные для обновления токена ===
+# === OAuth2 данные ===
 CLIENT_ID = os.environ.get("AMO_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("AMO_CLIENT_SECRET")
 REDIRECT_URI = os.environ.get("AMO_REDIRECT_URI")
+ACCESS_TOKEN = os.environ.get("AMO_ACCESS_TOKEN")
+REFRESH_TOKEN = os.environ.get("AMO_REFRESH_TOKEN")
 
-# === Получение и обновление access_token ===
-def get_tokens():
-    if not os.path.exists(TOKEN_FILE):
-        raise Exception("Файл с токенами не найден")
-    with open(TOKEN_FILE, "r") as f:
-        return json.load(f)
-
-def save_tokens(tokens):
-    with open(TOKEN_FILE, "w") as f:
-        json.dump(tokens, f)
-
+# === Обновление токена ===
 def refresh_access_token():
-    tokens = get_tokens()
     response = requests.post(f"{AMO_DOMAIN}/oauth2/access_token", json={
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
         "grant_type": "refresh_token",
-        "refresh_token": tokens["refresh_token"],
+        "refresh_token": REFRESH_TOKEN,
         "redirect_uri": REDIRECT_URI
     })
-    new_tokens = response.json()
-    save_tokens(new_tokens)
-    return new_tokens["access_token"]
-
-def get_valid_access_token():
-    tokens = get_tokens()
-    return tokens["access_token"]
+    tokens = response.json()
+    print("🔄 Новый access_token получен")
+    return tokens.get("access_token")
 
 def authorized_get(url):
-    token = get_valid_access_token()
-    headers = {"Authorization": f"Bearer {token}"}
+    global ACCESS_TOKEN
+    headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 401:
-        print("🔄 Токен просрочен, обновляем...")
-        token = refresh_access_token()
-        headers = {"Authorization": f"Bearer {token}"}
+        print("🔁 access_token протух, обновляем...")
+        ACCESS_TOKEN = refresh_access_token()
+        headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
         response = requests.get(url, headers=headers)
     return response
 
-# === Обработка вебхука от amoCRM ===
+# === Обработка вебхука ===
 @app.route("/", methods=["POST"])
 def webhook():
     try:
@@ -73,7 +58,6 @@ def webhook():
         if not lead_id:
             return "ID сделки не найден", 400
 
-        # Получение сделки с контактом
         lead_response = authorized_get(f"{AMO_DOMAIN}/api/v4/leads/{lead_id}?with=contacts")
         lead_data = lead_response.json()
         print("📄 Ответ от /leads:", lead_data)
@@ -88,7 +72,6 @@ def webhook():
         if not contact_id:
             return "Контакт не найден", 400
 
-        # Получение контакта
         contact_response = authorized_get(f"{AMO_DOMAIN}/api/v4/contacts/{contact_id}?with=custom_fields")
         contact_data = contact_response.json()
         print("👤 Ответ от /contacts:", contact_data)
