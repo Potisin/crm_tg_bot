@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import traceback
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
