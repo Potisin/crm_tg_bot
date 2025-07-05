@@ -33,7 +33,7 @@ def refresh_access_token():
         "redirect_uri": REDIRECT_URI
     })
     tokens = response.json()
-    print("🔄 Новый access_token получен")
+    logger.info("🔄 Новый access_token получен")
     return tokens.get("access_token")
 
 def authorized_get(url):
@@ -41,7 +41,7 @@ def authorized_get(url):
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 401:
-        print("🔁 access_token протух, обновляем...")
+        logger.info("🔁 access_token протух, обновляем...")
         ACCESS_TOKEN = refresh_access_token()
         headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
         response = requests.get(url, headers=headers)
@@ -51,33 +51,33 @@ def authorized_get(url):
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        print("🔔 Получен POST-запрос от amoCRM")
+        logger.info("🔔 Получен POST-запрос от amoCRM")
         form = request.form.to_dict(flat=False)
-        print("📥 Данные формы:", form)
+        logger.info("📥 Данные формы:", form)
 
         lead_id = form.get("leads[add][0][id]", [None])[0]
-        print(f"➡️ ID сделки: {lead_id}")
+        logger.info(f"➡️ ID сделки: {lead_id}")
 
         if not lead_id:
             return "ID сделки не найден", 400
 
         lead_response = authorized_get(f"{AMO_DOMAIN}/api/v4/leads/{lead_id}?with=contacts")
         lead_data = lead_response.json()
-        print("📄 Ответ от /leads:", lead_data)
+        logger.info("📄 Ответ от /leads:", lead_data)
 
         contact_id = (
             lead_data.get("_embedded", {})
             .get("contacts", [{}])[0]
             .get("id")
         )
-        print(f"👤 ID контакта: {contact_id}")
+        logger.info(f"👤 ID контакта: {contact_id}")
 
         if not contact_id:
             return "Контакт не найден", 400
 
         contact_response = authorized_get(f"{AMO_DOMAIN}/api/v4/contacts/{contact_id}?with=custom_fields")
         contact_data = contact_response.json()
-        print("👤 Ответ от /contacts:", contact_data)
+        logger.info("👤 Ответ от /contacts:", contact_data)
 
         name = contact_data.get("name", "Без имени")
         phone = "Не указан"
@@ -88,19 +88,19 @@ def webhook():
                 break
 
         message = f"🔔 Новый лид!\n👤 Имя: {name}\n📞 Телефон: {phone}"
-        print("📤 Отправка в Telegram:", message)
+        logger.info("📤 Отправка в Telegram:", message)
 
         tg_response = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={"chat_id": CHAT_ID, "text": message}
         )
-        print("✅ Ответ от Telegram:", tg_response.text)
+        logger.info("✅ Ответ от Telegram:", tg_response.text)
 
         return "OK", 200
 
     except Exception as e:
-        print("❌ Ошибка в webhook:")
-        traceback.print_exc()
+        logger.info("❌ Ошибка в webhook:")
+        traceback.logger.info_exc()
         return f"Ошибка: {str(e)}", 500
 
 @app.route("/", methods=["GET"])
